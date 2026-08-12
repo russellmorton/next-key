@@ -4,7 +4,7 @@
   "name": "NextKey",
   "version": "1.0.0",
   "author": "Russell Morton",
-  "description": "NextKey is a passive which-key overlay for the user's Omarchy shortcuts.",
+  "description": "A contextual shortcut guide for Omarchy that reveals available actions as you hold Super and add modifiers.",
   "kinds": [
     "overlay"
   ],
