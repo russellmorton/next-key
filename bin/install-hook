@@ -1,0 +1,117 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PLUGIN_ID="next-key"
+START_MARKER="-- next-key:start"
+END_MARKER="-- next-key:end"
+BINDINGS_FILE="$HOME/.config/hypr/bindings.lua"
+PLUGIN_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
+OBSERVER_FILE="$PLUGIN_DIR/hypr/shortcut-hints.lua"
+OMARCHY_ROOT="${OMARCHY_PATH:-/usr/share/omarchy}"
+
+fail() {
+  echo "install-hook: $*" >&2
+  exit 1
+}
+
+quattro_required() {
+  cat >&2 <<'MESSAGE'
+NextKey requires the Omarchy Quattro plugin system.
+No configuration was changed.
+MESSAGE
+  exit 1
+}
+
+command -v omarchy-shell >/dev/null 2>&1 || quattro_required
+command -v omarchy-plugin-validate >/dev/null 2>&1 || quattro_required
+command -v qs >/dev/null 2>&1 || quattro_required
+[[ -f "$OMARCHY_ROOT/shell/services/PluginRegistry.qml" ]] || quattro_required
+[[ -f "$PLUGIN_DIR/manifest.json" && -f "$OBSERVER_FILE" ]] ||
+  fail "plugin is not installed at $PLUGIN_DIR; no configuration was changed"
+
+command -v hyprctl >/dev/null 2>&1 || fail "hyprctl is required; no configuration was changed"
+command -v luac >/dev/null 2>&1 || fail "luac is required; no configuration was changed"
+[[ -f "$BINDINGS_FILE" ]] || fail "$BINDINGS_FILE does not exist; no configuration was changed"
+
+omarchy-plugin-validate "$PLUGIN_DIR" >/dev/null ||
+  fail "plugin validation failed; no configuration was changed"
+luac -p "$OBSERVER_FILE" "$PLUGIN_DIR/hypr/ShortcutHintsState.lua" ||
+  fail "plugin Lua validation failed; no configuration was changed"
+
+probe=$(hyprctl repl 'return type(hl.on), type(hl.timer), type(hl.is_key_down), type(hl.get_active_monitor)' 2>/dev/null) ||
+  fail "could not query the running Hyprland Lua runtime; no configuration was changed"
+[[ "$probe" == $'function\tfunction\tfunction\tfunction' ]] ||
+  fail "Hyprland lacks the required Lua APIs; no configuration was changed"
+
+hyprctl repl '
+local keyboard = hl.on("input.keyboard.key", function() end)
+local reloaded = hl.on("config.reloaded", function() end)
+keyboard:remove()
+reloaded:remove()
+return "ok"
+' >/dev/null 2>&1 ||
+  fail "Hyprland lacks the required keyboard/config events; no configuration was changed"
+
+start_count=$(grep -Fxc -- "$START_MARKER" "$BINDINGS_FILE" || true)
+end_count=$(grep -Fxc -- "$END_MARKER" "$BINDINGS_FILE" || true)
+if (( start_count == 1 && end_count == 1 )); then
+  echo "NextKey loader is already installed."
+  exit 0
+fi
+if (( start_count != 0 || end_count != 0 )); then
+  fail "found an incomplete NextKey marker block; no configuration was changed"
+fi
+
+timestamp=$(date -u +%Y%m%d%H%M%S)
+backup="$BINDINGS_FILE.next-key.bak.$timestamp"
+temp_file=$(mktemp "$BINDINGS_FILE.next-key.XXXXXX")
+changed=0
+
+cleanup() {
+  status=$?
+  rm -f -- "$temp_file"
+  if (( status != 0 && changed == 1 )); then
+    cp -p -- "$backup" "$BINDINGS_FILE"
+    hyprctl reload >/dev/null 2>&1 || true
+    echo "install-hook: restored $BINDINGS_FILE after installation failure" >&2
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+
+cp -p -- "$BINDINGS_FILE" "$backup"
+cp -p -- "$BINDINGS_FILE" "$temp_file"
+
+cat >>"$temp_file" <<'LUA'
+
+-- next-key:start
+do
+  local home = os.getenv("HOME")
+  local path = home and (home .. "/.config/omarchy/plugins/next-key/hypr/shortcut-hints.lua")
+  if path then
+    local file = io.open(path, "r")
+    if file then
+      file:close()
+      local ok, err = pcall(dofile, path)
+      if not ok then
+        io.stderr:write("next-key: " .. tostring(err) .. "\n")
+      end
+    end
+  end
+end
+-- next-key:end
+LUA
+
+chmod --reference="$BINDINGS_FILE" "$temp_file"
+luac -p "$temp_file" || fail "generated bindings.lua is invalid"
+mv -- "$temp_file" "$BINDINGS_FILE"
+changed=1
+
+hyprctl reload >/dev/null || fail "Hyprland reload failed"
+config_errors=$(hyprctl configerrors 2>/dev/null || true)
+[[ -z "$config_errors" ]] || fail "Hyprland reported configuration errors: $config_errors"
+
+changed=0
+trap - EXIT
+echo "Installed NextKey loader. Backup: $backup"

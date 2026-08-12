@@ -1,0 +1,53 @@
+#!/bin/bash
+
+set -euo pipefail
+
+START_MARKER="-- next-key:start"
+END_MARKER="-- next-key:end"
+BINDINGS_FILE="$HOME/.config/hypr/bindings.lua"
+
+fail() {
+  echo "uninstall-hook: $*" >&2
+  exit 1
+}
+
+[[ -e "$BINDINGS_FILE" ]] || {
+  echo "NextKey loader is already absent."
+  exit 0
+}
+command -v luac >/dev/null 2>&1 || fail "luac is required to validate bindings.lua"
+
+start_count=$(grep -Fxc -- "$START_MARKER" "$BINDINGS_FILE" || true)
+end_count=$(grep -Fxc -- "$END_MARKER" "$BINDINGS_FILE" || true)
+if (( start_count == 0 && end_count == 0 )); then
+  echo "NextKey loader is already absent."
+  exit 0
+fi
+if (( start_count != 1 || end_count != 1 )); then
+  fail "refusing to edit an incomplete or duplicated marker block"
+fi
+
+timestamp=$(date -u +%Y%m%d%H%M%S)
+backup="$BINDINGS_FILE.next-key.uninstall.bak.$timestamp"
+temp_file=$(mktemp "$BINDINGS_FILE.next-key.XXXXXX")
+cp -p -- "$BINDINGS_FILE" "$backup"
+
+awk -v start="$START_MARKER" -v finish="$END_MARKER" '
+  $0 == start { skipping = 1; next }
+  $0 == finish && skipping { skipping = 0; next }
+  !skipping { print }
+' "$BINDINGS_FILE" >"$temp_file"
+
+chmod --reference="$BINDINGS_FILE" "$temp_file"
+if ! luac -p "$temp_file"; then
+  rm -f -- "$temp_file"
+  fail "removing the marker block produced invalid Lua; original left untouched"
+fi
+
+mv -- "$temp_file" "$BINDINGS_FILE"
+
+if command -v hyprctl >/dev/null 2>&1 && hyprctl reload >/dev/null 2>&1; then
+  echo "Removed NextKey loader. Backup: $backup"
+else
+  echo "Removed NextKey loader. Hyprland is not running; reload it later. Backup: $backup"
+fi

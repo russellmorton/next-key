@@ -1,0 +1,14 @@
+SUPER + K                           → Keybindings
+SUPER + RETURN                      → Terminal
+SUPER SHIFT + B                     → Browser
+SUPER SHIFT + B                     → Browser alias
+SUPER CTRL + A                      → Audio
+SUPER SHIFT CTRL + R                → Clear reminders
+SUPER ALT + F                       → Full width
+SUPER + LEFT MOUSE BUTTON           → Move window
+SUPER + mouse_down                  → Scroll active workspace forward
+SUPER + XF86AudioPlay               → Media
+SUPER + code:999                    → Unresolved code
+ALT + TAB                           → Focus next window
+SUPER + H                           → Hidden: helper
+malformed record

@@ -1,0 +1,14 @@
+# Local agent and workspace state
+.agents/
+.codex/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Editor and OS metadata
+.DS_Store
+*.swp
+*.swo
+*~

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "next-key",
+  "name": "NextKey",
+  "version": "1.0.0",
+  "author": "Russell Morton",
+  "description": "NextKey is a passive which-key overlay for the user's Omarchy shortcuts.",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "ShortcutHints.qml"
+  }
+}
